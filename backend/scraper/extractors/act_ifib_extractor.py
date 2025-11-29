@@ -31,14 +31,15 @@ class ACTIFIBExtractor(BaseExtractor):
         # Extract opportunity code from URL
         opportunity_code = self._extract_opportunity_code_from_url(page_info.get('url', ''))
         
-        # Extract opportunity name and bid closing date from entire PDF using Groq
-        opportunity_name, bid_closing_date = self._extract_fields_with_groq(pdf_text, opportunity_code)
+        # Extract opportunity name, bid closing date, and clarification deadline from entire PDF using Groq
+        opportunity_name, bid_closing_date, clarification_deadline = self._extract_fields_with_groq(pdf_text, opportunity_code)
         
         opportunity_data = {
             'opportunity_code': opportunity_code,
             'opportunity_type': 'IFIB',
             'opportunity_name': opportunity_name or page_info.get('page_title', 'Unknown'),
             'bid_closing_date': bid_closing_date,
+            'clarification_deadline': clarification_deadline,
             'url': page_info.get('url'),
             'pdf_url': page_info.get('pdf_url'),
         }
@@ -46,6 +47,7 @@ class ACTIFIBExtractor(BaseExtractor):
         logger.info(f"Extracted opportunity_code: {opportunity_code}")
         logger.info(f"Extracted opportunity_name: {opportunity_name}")
         logger.info(f"Extracted bid_closing_date: {bid_closing_date}")
+        logger.info(f"Extracted clarification_deadline: {clarification_deadline}")
         return opportunity_data
     
     def _extract_opportunity_code_from_url(self, url: str) -> Optional[str]:
@@ -164,9 +166,9 @@ class ACTIFIBExtractor(BaseExtractor):
         logger.warning("Could not extract opportunity_name from PDF first page")
         return None
     
-    def _extract_fields_with_groq(self, pdf_text: str, opportunity_code: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_fields_with_groq(self, pdf_text: str, opportunity_code: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        Extract opportunity_name and bid_closing_date from PDF using Groq with chunking.
+        Extract opportunity_name, bid_closing_date, and clarification_deadline from PDF using Groq with chunking.
         
         Processes PDF in 10-page chunks until all fields are found or all pages are processed.
         Uses llama-3.1-8b-instant model.
@@ -176,15 +178,15 @@ class ACTIFIBExtractor(BaseExtractor):
             opportunity_code: The opportunity code (e.g., "IFIB-ACT-SACT-26-07") for context
             
         Returns:
-            Tuple of (opportunity_name, bid_closing_date)
+            Tuple of (opportunity_name, bid_closing_date, clarification_deadline)
         """
         if not self.use_llm or not self.llm_client:
             logger.warning("Groq client not available, skipping LLM extraction")
-            return None, None
+            return None, None, None
         
         if not pdf_text:
             logger.warning("No PDF text provided for Groq extraction")
-            return None, None
+            return None, None, None
         
         # Split PDF into pages
         pages = self._split_pdf_into_pages(pdf_text)
@@ -193,11 +195,12 @@ class ACTIFIBExtractor(BaseExtractor):
         
         if total_pages == 0:
             logger.warning("No pages found in PDF text")
-            return None, None
+            return None, None, None
         
         # Track extracted fields
         opportunity_name = None
         bid_closing_date = None
+        clarification_deadline = None
         
         # Process in chunks of 10 pages
         chunk_size = 10
@@ -213,12 +216,12 @@ class ACTIFIBExtractor(BaseExtractor):
             chunk_text = "\n\n".join(pages[start_page:end_page])
             
             # Check if we already have all fields
-            if opportunity_name and bid_closing_date:
+            if opportunity_name and bid_closing_date and clarification_deadline:
                 logger.info(f"✅ All fields extracted! Stopping at {page_range}")
                 break
             
             # Extract from this chunk
-            chunk_name, chunk_date = self._extract_from_chunk(chunk_text, opportunity_code, page_range)
+            chunk_name, chunk_date, chunk_clarification = self._extract_from_chunk(chunk_text, opportunity_code, page_range)
             
             # Update fields if found
             if chunk_name and not opportunity_name:
@@ -229,13 +232,17 @@ class ACTIFIBExtractor(BaseExtractor):
                 bid_closing_date = chunk_date
                 logger.info(f"✅ Found bid_closing_date in {page_range}")
             
+            if chunk_clarification and not clarification_deadline:
+                clarification_deadline = chunk_clarification
+                logger.info(f"✅ Found clarification_deadline in {page_range}")
+            
             # If we have all fields, stop
-            if opportunity_name and bid_closing_date:
+            if opportunity_name and bid_closing_date and clarification_deadline:
                 logger.info(f"✅ All fields extracted! Stopping at {page_range}")
                 break
         
-        logger.info(f"Final extraction result: name={bool(opportunity_name)}, date={bool(bid_closing_date)}")
-        return opportunity_name, bid_closing_date
+        logger.info(f"Final extraction result: name={bool(opportunity_name)}, date={bool(bid_closing_date)}, clarification={bool(clarification_deadline)}")
+        return opportunity_name, bid_closing_date, clarification_deadline
     
     def _split_pdf_into_pages(self, pdf_text: str) -> list:
         """
@@ -281,7 +288,7 @@ class ACTIFIBExtractor(BaseExtractor):
         
         return pages
     
-    def _extract_from_chunk(self, chunk_text: str, opportunity_code: Optional[str], page_range: str) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_from_chunk(self, chunk_text: str, opportunity_code: Optional[str], page_range: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Extract fields from a single chunk of PDF text.
         
@@ -291,7 +298,7 @@ class ACTIFIBExtractor(BaseExtractor):
             page_range: Description of which pages this chunk represents
             
         Returns:
-            Tuple of (opportunity_name, bid_closing_date)
+            Tuple of (opportunity_name, bid_closing_date, clarification_deadline)
         """
         try:
             # Prepare the prompt
@@ -314,13 +321,29 @@ class ACTIFIBExtractor(BaseExtractor):
    
    Extract the complete date and time information exactly as written in the document, including timezone if mentioned.
 
+3. **clarification_deadline**: The deadline for submitting clarification questions. This MUST include:
+   - The date (day, month, year)
+   - The time (if specified)
+   - The timezone (if specified)
+   
+   Look for phrases like:
+   - "Clarification deadline"
+   - "Deadline for clarifications"
+   - "Questions must be submitted by"
+   - "Clarification questions deadline"
+   - "Deadline for questions"
+   - "Clarification date"
+   
+   Extract the complete date and time information exactly as written in the document, including timezone if mentioned.
+
 Opportunity Code (for reference): {opportunity_code or 'Not provided'}
 This section contains: {page_range}
 
 Return your response as a JSON object with exactly these fields:
 {{
     "opportunity_name": "the full opportunity name/title",
-    "bid_closing_date": "the complete closing date with time and timezone if available"
+    "bid_closing_date": "the complete closing date with time and timezone if available",
+    "clarification_deadline": "the complete clarification deadline with time and timezone if available"
 }}
 
 If a field cannot be found in this section, use null for that field. Do not make up information.
@@ -385,6 +408,7 @@ Document section text:
                 extracted_data = json.loads(response_content)
                 opportunity_name = extracted_data.get("opportunity_name")
                 bid_closing_date = extracted_data.get("bid_closing_date")
+                clarification_deadline = extracted_data.get("clarification_deadline")
                 
                 # Validate and clean the extracted data
                 if opportunity_name and (opportunity_name.lower() in ["null", "none", "n/a", "not found"]):
@@ -393,12 +417,15 @@ Document section text:
                 if bid_closing_date and (bid_closing_date.lower() in ["null", "none", "n/a", "not found"]):
                     bid_closing_date = None
                 
-                return opportunity_name, bid_closing_date
+                if clarification_deadline and (clarification_deadline.lower() in ["null", "none", "n/a", "not found"]):
+                    clarification_deadline = None
+                
+                return opportunity_name, bid_closing_date, clarification_deadline
                 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse Groq JSON response for {page_range}: {e}")
                 logger.error(f"Response content: {response_content[:500]}")
-                return None, None
+                return None, None, None
                 
         except Exception as e:
             # Check if it's a rate limit error
@@ -406,4 +433,4 @@ Document section text:
                 logger.warning(f"Rate limit exceeded for {page_range}. Chunk may be too large. Error: {e}")
             else:
                 logger.error(f"Error calling Groq API for {page_range}: {e}")
-            return None, None
+            return None, None, None
