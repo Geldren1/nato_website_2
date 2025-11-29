@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Opportunity } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import { Calendar, Info, Link as LinkIcon, FileText } from "lucide-react";
+import { Calendar, Info, Link as LinkIcon, FileText, Sparkles, RefreshCw } from "lucide-react";
 import { Card, Badge } from "@/components/ui";
 import OpportunityDetailsModal from "./OpportunityDetailsModal";
 
@@ -23,6 +23,27 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
     return "default";
   };
 
+  // Check if opportunity is new (created today)
+  const isNew = (): boolean => {
+    if (!opportunity.created_at) return false;
+    const createdDate = new Date(opportunity.created_at);
+    const today = new Date();
+    return (
+      createdDate.getFullYear() === today.getFullYear() &&
+      createdDate.getMonth() === today.getMonth() &&
+      createdDate.getDate() === today.getDate()
+    );
+  };
+
+  // Check if opportunity was updated in the last 5 days
+  const isRecentlyUpdated = (): boolean => {
+    if (!opportunity.updated_at) return false;
+    const updatedDate = new Date(opportunity.updated_at);
+    const today = new Date();
+    const daysDiff = Math.floor((today.getTime() - updatedDate.getTime()) / (1000 * 60 * 60 * 24));
+    return daysDiff <= 5 && daysDiff >= 0;
+  };
+
   return (
     <>
       <OpportunityDetailsModal
@@ -40,6 +61,24 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
             )}
             {opportunity.nato_body && (
               <Badge variant="default">{opportunity.nato_body}</Badge>
+            )}
+            {isNew() && (
+              <Badge 
+                variant="success" 
+                className="flex items-center gap-1 bg-green-500 text-white font-semibold"
+              >
+                <Sparkles className="w-3 h-3" />
+                NEW
+              </Badge>
+            )}
+            {isRecentlyUpdated() && !isNew() && (
+              <Badge 
+                variant="warning" 
+                className="flex items-center gap-1 bg-orange-500 text-white font-semibold"
+              >
+                <RefreshCw className="w-3 h-3" />
+                UPDATE
+              </Badge>
             )}
             {opportunity.opportunity_code && (
               <span className="text-xs text-slate-500 font-mono">

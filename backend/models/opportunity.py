@@ -19,7 +19,7 @@ class Opportunity(Base):
     opportunity_type = Column(String, nullable=True, index=True)  # RFP, RFI, IFIB, NOI, etc.
     nato_body = Column(String, nullable=True, index=True)  # ACT, NCIA, DIANA, etc.
     opportunity_name = Column(String, nullable=False)
-    url = Column(String, nullable=False, unique=True)
+    url = Column(String, nullable=False)  # Removed unique constraint to allow amendments with different URLs
     pdf_url = Column(String, nullable=True)
     source_url = Column(String, nullable=True)  # Base URL of the website being scraped
     
@@ -86,6 +86,14 @@ class Opportunity(Base):
     # Count of how many times this opportunity was updated
     last_changed_fields = Column(JSON, nullable=True)
     # JSON array of field names that changed in the last update (e.g., ["bid_closing_date", "required_documents"])
+    
+    # Amendment Tracking (for detecting URL changes/amendments)
+    amendment_count = Column(Integer, default=0, nullable=False)
+    # Count of how many amendments have occurred (URL changes for same opportunity_code)
+    has_amendments = Column(Boolean, default=False, nullable=False)
+    # Whether any amendments have occurred
+    last_amendment_at = Column(DateTime, nullable=True)
+    # When the last amendment was detected
     
     # Soft delete tracking
     removed_at = Column(DateTime, nullable=True)

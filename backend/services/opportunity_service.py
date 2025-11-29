@@ -20,15 +20,25 @@ class OpportunityService:
         page: int = 1,
         page_size: int = 50
     ) -> OpportunityListResponse:
-        """Get paginated list of opportunities."""
+        """
+        Get paginated list of opportunities.
+        
+        When is_active=True, automatically filters out opportunities that are
+        more than 1 day past their closing date.
+        """
         skip = (page - 1) * page_size
+        
+        # When is_active=True, exclude past-due opportunities (more than 1 day after closing)
+        exclude_past_due = is_active is True
+        
         opportunities, total = self.repository.get_all(
             is_active=is_active,
             skip=skip,
-            limit=page_size
+            limit=page_size,
+            exclude_past_due=exclude_past_due
         )
         
-        total_pages = (total + page_size - 1) // page_size
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 0
         
         return OpportunityListResponse(
             items=[OpportunityResponse.model_validate(opp) for opp in opportunities],

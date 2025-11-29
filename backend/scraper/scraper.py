@@ -17,6 +17,7 @@ from urllib.parse import urljoin
 from database.session import get_db_session
 from models import Opportunity
 from utils.date_parser import parse_opportunity_dates
+from utils.url_comparison import urls_differ_by_ending
 from scraper.config import SCRAPER_CONFIGS, extract_nato_body_from_url
 from scraper.extractors import get_act_extractor
 from external.groq.client import get_groq_client
@@ -362,117 +363,413 @@ class NATOOpportunitiesScraper:
             }
             return error_data
     
-    async def scrape_all(self) -> int:
+    def _extract_opportunity_code_from_url(self, url: str) -> Optional[str]:
+        """
+        Extract opportunity code from URL using the ACT IFIB extractor pattern.
+        
+        Args:
+            url: The opportunity URL
+            
+        Returns:
+            Opportunity code string or None if not found
+        """
+        # Use the ACT IFIB extractor's method to extract opportunity code
+        # Create a temporary extractor instance to use its method
+        opportunity_type = "IFIB"
+        extractor = get_act_extractor(opportunity_type, use_llm=False, llm_client=None)
+        return extractor._extract_opportunity_code_from_url(url)
+    
+    def _reconcile_opportunities(self, website_links: List[Dict], db) -> Dict:
+        """
+        Reconcile website opportunities with database opportunities.
+        
+        Categorizes opportunities into:
+        - New: opportunity_code not in DB
+        - Amendments: opportunity_code exists but URL ending differs
+        - Unchanged: opportunity_code exists and URL ending same
+        - Removed: opportunity_code in DB but not on website
+        
+        Args:
+            website_links: List of dicts with 'url' and 'text' keys from website
+            db: Database session
+            
+        Returns:
+            Dictionary with keys:
+            - 'new': List of links to process (new opportunities)
+            - 'amendments': List of tuples (link, existing_opportunity) for URL changes
+            - 'unchanged': List of existing opportunities (just update last_checked_at)
+            - 'removed': List of opportunities in DB but not on website (for logging only)
+        """
+        logger.info("Reconciling website opportunities with database...")
+        
+        # Extract opportunity_codes from website links
+        website_codes = {}
+        for link in website_links:
+            url = link.get('url')
+            if not url:
+                continue
+            
+            opportunity_code = self._extract_opportunity_code_from_url(url)
+            if opportunity_code:
+                website_codes[opportunity_code] = link
+            else:
+                logger.warning(f"Could not extract opportunity_code from URL: {url}")
+        
+        logger.info(f"Found {len(website_codes)} opportunities on website (by opportunity_code)")
+        
+        # Get all existing opportunities for this nato_body and opportunity_type
+        nato_body = self.config.get("nato_body", "ACT")
+        opportunity_type = "IFIB"
+        
+        existing = db.query(Opportunity).filter(
+            Opportunity.nato_body == nato_body,
+            Opportunity.opportunity_type == opportunity_type
+        ).all()
+        
+        existing_by_code = {opp.opportunity_code: opp for opp in existing}
+        logger.info(f"Found {len(existing_by_code)} existing opportunities in database")
+        
+        # Categorize opportunities
+        new = []
+        amendments = []
+        unchanged = []
+        
+        for code, link in website_codes.items():
+            if code not in existing_by_code:
+                # New opportunity
+                new.append(link)
+                logger.debug(f"New opportunity: {code} -> {link.get('url')}")
+            else:
+                # Existing opportunity - check if URL has changed
+                existing_opp = existing_by_code[code]
+                website_url = link.get('url')
+                
+                if urls_differ_by_ending(website_url, existing_opp.url):
+                    # URL ending differs - this is an amendment
+                    amendments.append((link, existing_opp))
+                    logger.info(f"Amendment detected: {code} - URL changed from '{existing_opp.url}' to '{website_url}'")
+                else:
+                    # URL ending same - unchanged
+                    unchanged.append(existing_opp)
+                    logger.debug(f"Unchanged: {code} -> {website_url}")
+        
+        # Find removed (in DB but not on website)
+        removed = []
+        for code, opp in existing_by_code.items():
+            if code not in website_codes:
+                removed.append(opp)
+                logger.debug(f"Removed from website (keeping in DB): {code}")
+        
+        logger.info(f"Reconciliation complete: {len(new)} new, {len(amendments)} amendments, {len(unchanged)} unchanged, {len(removed)} removed from website")
+        
+        return {
+            'new': new,
+            'amendments': amendments,
+            'unchanged': unchanged,
+            'removed': removed
+        }
+    
+    async def scrape_all(self, mode: str = "incremental") -> int:
         """
         Scrape all IFIB opportunities and save to database.
+        
+        Args:
+            mode: "full" (process all) or "incremental" (reconcile first)
         
         Returns:
             Number of opportunities scraped
         """
-        logger.info("Starting ACT IFIB scraper...")
+        logger.info(f"Starting ACT IFIB scraper in {mode} mode...")
         
-        # Get all IFIB opportunity links
+        # Phase 1: Discovery - Get all IFIB opportunity links from website
         links = await self.get_opportunity_links()
         
         if not links:
             logger.warning("No IFIB opportunities found")
             return 0
         
-        logger.info(f"Found {len(links)} IFIB opportunities to scrape")
+        logger.info(f"Found {len(links)} IFIB opportunities on website")
         
-        scraped_count = 0
-        
-        # Process each opportunity
-        for i, link in enumerate(links, 1):
-            url = link['url']
-            logger.info(f"\n[{i}/{len(links)}] Processing: {url}")
-            
+        if mode == "incremental":
+            # Phase 2: Reconciliation - Compare with database
+            db = get_db_session()
             try:
-                # Visit the opportunity page to get PDF link
-                page_info = await self.visit_opportunity_page(url)
+                reconciliation = self._reconcile_opportunities(links, db)
                 
-                if not page_info:
-                    logger.warning(f"Failed to visit page: {url}")
-                    continue
+                # Phase 3: Processing - Process only what needs it
+                new_links = reconciliation['new']
+                amendments = reconciliation['amendments']
+                unchanged = reconciliation['unchanged']
+                removed = reconciliation['removed']
                 
-                pdf_url = page_info.get('pdf_url')
-                if not pdf_url:
-                    logger.warning(f"No PDF found for: {url}")
-                    continue
+                logger.info(f"Processing: {len(new_links)} new, {len(amendments)} amendments, {len(unchanged)} unchanged")
                 
-                # Download PDF to temporary file
-                tmp_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                        tmp_path = tmp_file.name
-                    
-                    if not self.download_pdf(pdf_url, tmp_path):
-                        logger.warning(f"Failed to download PDF: {pdf_url}")
-                        if tmp_path and os.path.exists(tmp_path):
-                            os.unlink(tmp_path)
-                        continue
-                    
-                    # Extract text from PDF
-                    pdf_text = self.extract_pdf_text(tmp_path)
-                    
-                finally:
-                    # Always clean up temp file, even if extraction fails
+                # Process new opportunities
+                scraped_count = 0
+                for i, link in enumerate(new_links, 1):
+                    logger.info(f"\n[NEW {i}/{len(new_links)}] Processing: {link.get('url')}")
+                    success = await self._process_opportunity(link)
+                    if success:
+                        scraped_count += 1
+                    await asyncio.sleep(2)
+                
+                # Process amendments
+                for i, (link, existing_opp) in enumerate(amendments, 1):
+                    logger.info(f"\n[AMENDMENT {i}/{len(amendments)}] Processing: {link.get('url')} (existing: {existing_opp.opportunity_code})")
+                    success = await self._process_opportunity(link, existing_opportunity=existing_opp)
+                    if success:
+                        scraped_count += 1
+                    await asyncio.sleep(2)
+                
+                # Update last_checked_at for unchanged opportunities
+                if unchanged:
+                    logger.info(f"Updating last_checked_at for {len(unchanged)} unchanged opportunities...")
+                    for opp in unchanged:
+                        opp.last_checked_at = datetime.utcnow()
+                    db.commit()
+                    logger.info(f"✅ Updated {len(unchanged)} unchanged opportunities")
+                
+                # Log removed opportunities (keep in DB, don't mark inactive)
+                if removed:
+                    logger.info(f"Note: {len(removed)} opportunities are in DB but not on website (keeping in DB)")
+                    for opp in removed:
+                        logger.debug(f"  - {opp.opportunity_code}: {opp.url}")
+                
+            finally:
+                db.close()
+        else:
+            # Full mode: process all opportunities (current behavior)
+            logger.info("Running in full mode - processing all opportunities")
+            scraped_count = 0
+            
+            # Process each opportunity
+            for i, link in enumerate(links, 1):
+                url = link['url']
+                logger.info(f"\n[{i}/{len(links)}] Processing: {url}")
+                success = await self._process_opportunity(link)
+                if success:
+                    scraped_count += 1
+                await asyncio.sleep(2)
+        
+        logger.info(f"\n✅ Scraping complete! Processed {scraped_count} opportunities")
+        return scraped_count
+    
+    async def _process_opportunity(self, link: Dict, existing_opportunity: Optional[Opportunity] = None) -> bool:
+        """
+        Process a single opportunity: visit page, download PDF, extract data, save to database.
+        
+        Args:
+            link: Dict with 'url' and 'text' keys
+            existing_opportunity: Optional existing Opportunity object (for amendments)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        url = link.get('url')
+        if not url:
+            logger.warning("Link missing URL")
+            return False
+        
+        try:
+            # Visit the opportunity page to get PDF link
+            page_info = await self.visit_opportunity_page(url)
+            
+            if not page_info:
+                logger.warning(f"Failed to visit page: {url}")
+                return False
+            
+            pdf_url = page_info.get('pdf_url')
+            if not pdf_url:
+                logger.warning(f"No PDF found for: {url}")
+                return False
+            
+            # Download PDF to temporary file
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                    tmp_path = tmp_file.name
+                
+                if not self.download_pdf(pdf_url, tmp_path):
+                    logger.warning(f"Failed to download PDF: {pdf_url}")
                     if tmp_path and os.path.exists(tmp_path):
-                        try:
-                            os.unlink(tmp_path)
-                            logger.debug(f"Cleaned up temporary PDF file: {tmp_path}")
-                        except Exception as e:
-                            logger.warning(f"Failed to delete temp PDF file {tmp_path}: {e}")
+                        os.unlink(tmp_path)
+                    return False
                 
-                if not pdf_text or len(pdf_text.strip()) < 100:
-                    logger.warning(f"PDF text too short or empty: {url}")
-                    continue
+                # Extract text from PDF
+                pdf_text = self.extract_pdf_text(tmp_path)
                 
-                # Parse opportunity data
-                opportunity_data = self.parse_opportunity_data(pdf_text, page_info)
+            finally:
+                # Always clean up temp file, even if extraction fails
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                        logger.debug(f"Cleaned up temporary PDF file: {tmp_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete temp PDF file {tmp_path}: {e}")
+            
+            if not pdf_text or len(pdf_text.strip()) < 100:
+                logger.warning(f"PDF text too short or empty: {url}")
+                return False
+            
+            # Parse opportunity data
+            opportunity_data = self.parse_opportunity_data(pdf_text, page_info)
+            
+            # Save to database
+            db = get_db_session()
+            try:
+                opportunity_code = opportunity_data.get('opportunity_code')
                 
-                # Save to database
-                db = get_db_session()
-                try:
-                    # Check if opportunity already exists
+                if existing_opportunity and opportunity_code:
+                    # Re-query the opportunity in this session to avoid session issues
                     existing = db.query(Opportunity).filter(
-                        Opportunity.url == opportunity_data.get('url')
+                        Opportunity.opportunity_code == opportunity_code
                     ).first()
                     
                     if existing:
-                        # Update existing opportunity
+                        # Update existing opportunity (amendment or update)
+                        # Check if this is an amendment (URL changed)
+                        is_amendment = urls_differ_by_ending(url, existing.url)
+                        
+                        # Track which fields are changing
+                        changed_fields = []
+                        
+                        # Update all fields from new extraction and track changes
                         for key, value in opportunity_data.items():
                             if value is not None:
-                                setattr(existing, key, value)
+                                # Skip opportunity_code as it shouldn't change
+                                if key == 'opportunity_code':
+                                    continue
+                                
+                                # Get current value
+                                current_value = getattr(existing, key, None)
+                                
+                                # Check if value actually changed
+                                if current_value != value:
+                                    setattr(existing, key, value)
+                                    changed_fields.append(key)
+                                    logger.debug(f"Field '{key}' changed: '{current_value}' -> '{value}'")
+                        
+                        # If URL changed, this is an amendment
+                        if is_amendment:
+                            # This is an amendment - increment amendment tracking
+                            existing.amendment_count += 1
+                            existing.has_amendments = True
+                            existing.last_amendment_at = datetime.utcnow()
+                            logger.info(f"Amendment detected for {existing.opportunity_code} (count: {existing.amendment_count})")
+                            
+                            # Ensure URL and PDF URL are in changed fields
+                            if 'url' not in changed_fields:
+                                changed_fields.append('url')
+                            if 'pdf_url' not in changed_fields and opportunity_data.get('pdf_url') != existing.pdf_url:
+                                changed_fields.append('pdf_url')
+                        
+                        # Update last_changed_fields if any fields changed
+                        if changed_fields:
+                            # Merge with existing changed_fields (keep unique)
+                            existing_changed = existing.last_changed_fields or []
+                            merged_changed = list(set(existing_changed + changed_fields))
+                            existing.last_changed_fields = merged_changed
+                            logger.debug(f"Changed fields: {merged_changed}")
+                        
                         existing.last_checked_at = datetime.utcnow()
                         existing.updated_at = datetime.utcnow()
-                        logger.info(f"✅ Updated existing opportunity: {existing.opportunity_code}")
+                        existing.update_count += 1
+                        
+                        if is_amendment:
+                            logger.info(f"✅ Updated opportunity with amendment: {existing.opportunity_code} ({len(changed_fields)} fields changed)")
+                        else:
+                            logger.info(f"✅ Updated existing opportunity: {existing.opportunity_code} ({len(changed_fields)} fields changed)")
                     else:
-                        # Create new opportunity
+                        # Opportunity code exists but not found in DB - create new
                         opportunity = Opportunity(**opportunity_data)
                         opportunity.last_checked_at = datetime.utcnow()
                         opportunity.extracted_at = datetime.utcnow()
                         db.add(opportunity)
                         logger.info(f"✅ Created new opportunity: {opportunity.opportunity_code}")
-                    
-                    db.commit()
-                    scraped_count += 1
-                except Exception as e:
-                    db.rollback()
-                    logger.error(f"Error saving opportunity to database: {e}")
-                    raise
-                finally:
-                    db.close()
+                else:
+                    # Check if opportunity already exists by code (fallback - for full mode)
+                    if opportunity_code:
+                        existing = db.query(Opportunity).filter(
+                            Opportunity.opportunity_code == opportunity_code
+                        ).first()
+                        
+                        if existing:
+                            # Update existing opportunity
+                            # Check if this is an amendment (URL changed)
+                            is_amendment = urls_differ_by_ending(url, existing.url)
+                            
+                            # Track which fields are changing
+                            changed_fields = []
+                            
+                            # Update all fields from new extraction and track changes
+                            for key, value in opportunity_data.items():
+                                if value is not None:
+                                    # Skip opportunity_code as it shouldn't change
+                                    if key == 'opportunity_code':
+                                        continue
+                                    
+                                    # Get current value
+                                    current_value = getattr(existing, key, None)
+                                    
+                                    # Check if value actually changed
+                                    if current_value != value:
+                                        setattr(existing, key, value)
+                                        changed_fields.append(key)
+                                        logger.debug(f"Field '{key}' changed: '{current_value}' -> '{value}'")
+                            
+                            # If URL changed, this is an amendment
+                            if is_amendment:
+                                # This is an amendment - increment amendment tracking
+                                existing.amendment_count += 1
+                                existing.has_amendments = True
+                                existing.last_amendment_at = datetime.utcnow()
+                                logger.info(f"Amendment detected for {existing.opportunity_code} (count: {existing.amendment_count})")
+                                
+                                # Ensure URL and PDF URL are in changed fields
+                                if 'url' not in changed_fields:
+                                    changed_fields.append('url')
+                                if 'pdf_url' not in changed_fields and opportunity_data.get('pdf_url') != existing.pdf_url:
+                                    changed_fields.append('pdf_url')
+                            
+                            # Update last_changed_fields if any fields changed
+                            if changed_fields:
+                                # Merge with existing changed_fields (keep unique)
+                                existing_changed = existing.last_changed_fields or []
+                                merged_changed = list(set(existing_changed + changed_fields))
+                                existing.last_changed_fields = merged_changed
+                                logger.debug(f"Changed fields: {merged_changed}")
+                            
+                            existing.last_checked_at = datetime.utcnow()
+                            existing.updated_at = datetime.utcnow()
+                            existing.update_count += 1
+                            
+                            if is_amendment:
+                                logger.info(f"✅ Updated opportunity with amendment: {existing.opportunity_code} ({len(changed_fields)} fields changed)")
+                            else:
+                                logger.info(f"✅ Updated existing opportunity: {existing.opportunity_code} ({len(changed_fields)} fields changed)")
+                        else:
+                            # Create new opportunity
+                            opportunity = Opportunity(**opportunity_data)
+                            opportunity.last_checked_at = datetime.utcnow()
+                            opportunity.extracted_at = datetime.utcnow()
+                            db.add(opportunity)
+                            logger.info(f"✅ Created new opportunity: {opportunity.opportunity_code}")
+                    else:
+                        logger.error("Cannot save opportunity: missing opportunity_code")
+                        return False
                 
-                # Add delay between opportunities to be respectful
-                await asyncio.sleep(2)
-                
+                db.commit()
+                return True
             except Exception as e:
-                logger.error(f"Error processing opportunity {url}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        logger.info(f"\n✅ Scraping complete! Processed {scraped_count} opportunities")
-        return scraped_count
+                db.rollback()
+                logger.error(f"Error saving opportunity to database: {e}")
+                raise
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error processing opportunity {url}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
