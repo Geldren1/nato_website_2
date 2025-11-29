@@ -1,0 +1,40 @@
+# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.0  # PostgreSQL adapter
+
+# Environment and configuration
+python-dotenv==1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+email-validator>=2.0.0  # Required for Pydantic email validation
+
+# HTTP requests
+httpx>=0.26.0
+requests>=2.31.0
+
+# Web scraping
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+playwright>=1.40.0
+
+# PDF processing
+pypdf>=3.17.0
+pdfplumber>=0.10.0
+python-docx>=1.1.0  # For DOCX file support
+
+# Groq (optional, for enhanced scraper extraction)
+groq>=0.4.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.26.0  # For testing FastAPI
+

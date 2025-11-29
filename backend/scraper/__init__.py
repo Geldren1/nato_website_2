@@ -1,0 +1,4 @@
+"""
+NATO Opportunities Scraper
+"""
+
