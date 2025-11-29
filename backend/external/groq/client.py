@@ -29,9 +29,11 @@ class GroqClient:
         
         try:
             from groq import Groq
-            self._client = Groq(api_key=self.api_key)
+            # Set timeout to 120 seconds (2 minutes) to avoid 1-minute default timeout issues
+            # This is especially important for large PDF extractions
+            self._client = Groq(api_key=self.api_key, timeout=120.0)
             self._initialized = True
-            logger.info("Groq client initialized successfully")
+            logger.info("Groq client initialized successfully with 120s timeout")
         except Exception as e:
             logger.warning(f"Could not initialize Groq client: {e}")
             raise Exception(f"Failed to initialize Groq client: {e}")
