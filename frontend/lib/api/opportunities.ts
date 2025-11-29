@@ -47,6 +47,9 @@ export interface Opportunity {
   last_content_update: string | null;
   update_count: number;
   last_changed_fields: string[] | null;
+  amendment_count: number;
+  has_amendments: boolean;
+  last_amendment_at: string | null;
   removed_at: string | null;
 }
 
@@ -70,6 +73,13 @@ export interface GetOpportunitiesParams {
   is_active?: boolean;
   page?: number;
   page_size?: number;
+  opportunity_type?: string[];
+  nato_body?: string[];
+  search?: string;
+  closing_in_7_days?: boolean;
+  new_this_week?: boolean;
+  updated_this_week?: boolean;
+  sort_by?: string;
 }
 
 export async function getOpportunities(
@@ -85,6 +95,31 @@ export async function getOpportunities(
   }
   if (params.page_size !== undefined) {
     searchParams.append("page_size", params.page_size.toString());
+  }
+  if (params.opportunity_type && params.opportunity_type.length > 0) {
+    params.opportunity_type.forEach(type => {
+      searchParams.append("opportunity_type", type);
+    });
+  }
+  if (params.nato_body && params.nato_body.length > 0) {
+    params.nato_body.forEach(body => {
+      searchParams.append("nato_body", body);
+    });
+  }
+  if (params.search) {
+    searchParams.append("search", params.search);
+  }
+  if (params.closing_in_7_days !== undefined && params.closing_in_7_days === true) {
+    searchParams.append("closing_in_7_days", "true");
+  }
+  if (params.new_this_week !== undefined && params.new_this_week === true) {
+    searchParams.append("new_this_week", "true");
+  }
+  if (params.updated_this_week !== undefined && params.updated_this_week === true) {
+    searchParams.append("updated_this_week", "true");
+  }
+  if (params.sort_by) {
+    searchParams.append("sort_by", params.sort_by);
   }
 
   const queryString = searchParams.toString();

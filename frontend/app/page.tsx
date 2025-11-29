@@ -32,6 +32,13 @@ export default function HomePage() {
       is_active: true,
       page,
       page_size: pageSize,
+      opportunity_type: filters.opportunity_type.length > 0 ? filters.opportunity_type : undefined,
+      nato_body: filters.nato_body.length > 0 ? filters.nato_body : undefined,
+      search: filters.search || undefined,
+      closing_in_7_days: quickFilters.closing_in_7_days ? true : undefined,
+      new_this_week: quickFilters.new_this_week ? true : undefined,
+      updated_this_week: quickFilters.updated_this_week ? true : undefined,
+      sort_by: sortBy,
     })
       .then((data) => {
         setOpportunities(data.opportunities);

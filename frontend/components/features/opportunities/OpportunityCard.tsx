@@ -146,8 +146,8 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
             {opportunity.created_at && (
               <span>Created {formatDate(opportunity.created_at)}</span>
             )}
-            {opportunity.last_content_update && opportunity.last_content_update !== opportunity.created_at && (
-              <span>Amended {formatDate(opportunity.last_content_update)}</span>
+            {opportunity.last_amendment_at && (
+              <span>Amended {formatDate(opportunity.last_amendment_at)}</span>
             )}
           </div>
         </div>

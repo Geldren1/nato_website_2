@@ -23,18 +23,37 @@ class OpportunityRepository:
         is_active: Optional[bool] = None,
         skip: int = 0,
         limit: int = 50,
-        exclude_past_due: bool = False
+        exclude_past_due: bool = False,
+        opportunity_type: List[str] = None,
+        nato_body: List[str] = None,
+        search: Optional[str] = None,
+        closing_in_7_days: Optional[bool] = None,
+        new_this_week: Optional[bool] = None,
+        updated_this_week: Optional[bool] = None,
+        sort_by: str = "closing_date_asc"
     ) -> Tuple[List[Opportunity], int]:
         """
-        Get all opportunities with pagination.
+        Get all opportunities with pagination, filtering, and sorting.
         
         Args:
             is_active: Filter by active status
             skip: Number of records to skip
             limit: Maximum number of records to return
             exclude_past_due: If True, exclude opportunities more than 1 day past closing date
+            opportunity_type: List of opportunity types to filter by
+            nato_body: List of NATO bodies to filter by
+            search: Search term for opportunity name and code
+            closing_in_7_days: Filter opportunities closing in next 7 days
+            new_this_week: Filter opportunities created this week
+            updated_this_week: Filter opportunities updated this week
+            sort_by: Sort order
         """
         from datetime import datetime, timedelta
+        
+        if opportunity_type is None:
+            opportunity_type = []
+        if nato_body is None:
+            nato_body = []
         
         query = self.db.query(Opportunity)
         
@@ -54,6 +73,70 @@ class OpportunityRepository:
                     Opportunity.bid_closing_date_parsed >= cutoff_date
                 )
             )
+        
+        # Filter by opportunity type
+        if opportunity_type:
+            query = query.filter(Opportunity.opportunity_type.in_(opportunity_type))
+        
+        # Filter by NATO body
+        if nato_body:
+            query = query.filter(Opportunity.nato_body.in_(nato_body))
+        
+        # Search filter (opportunity name or code)
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Opportunity.opportunity_name.ilike(search_term),
+                    Opportunity.opportunity_code.ilike(search_term)
+                )
+            )
+        
+        # Quick filter: Closing in next 7 days
+        if closing_in_7_days:
+            now = datetime.utcnow()
+            seven_days_later = now + timedelta(days=7)
+            query = query.filter(
+                and_(
+                    Opportunity.bid_closing_date_parsed.isnot(None),
+                    Opportunity.bid_closing_date_parsed >= now,
+                    Opportunity.bid_closing_date_parsed <= seven_days_later
+                )
+            )
+        
+        # Quick filter: New this week
+        if new_this_week:
+            now = datetime.utcnow()
+            week_ago = now - timedelta(days=7)
+            query = query.filter(Opportunity.created_at >= week_ago)
+        
+        # Quick filter: Amended this week (only opportunities with amendments)
+        if updated_this_week:
+            now = datetime.utcnow()
+            week_ago = now - timedelta(days=7)
+            # Only show opportunities that have amendments and were amended in the last week
+            query = query.filter(
+                and_(
+                    Opportunity.has_amendments == True,
+                    Opportunity.last_amendment_at.isnot(None),
+                    Opportunity.last_amendment_at >= week_ago
+                )
+            )
+        
+        # Sorting
+        if sort_by == "closing_date_asc":
+            query = query.order_by(Opportunity.bid_closing_date_parsed.asc().nulls_last())
+        elif sort_by == "closing_date_desc":
+            query = query.order_by(Opportunity.bid_closing_date_parsed.desc().nulls_last())
+        elif sort_by == "recently_updated":
+            query = query.order_by(Opportunity.updated_at.desc())
+        elif sort_by == "recently_added":
+            query = query.order_by(Opportunity.created_at.desc())
+        elif sort_by == "name_asc":
+            query = query.order_by(Opportunity.opportunity_name.asc())
+        else:
+            # Default: closing_date_asc
+            query = query.order_by(Opportunity.bid_closing_date_parsed.asc().nulls_last())
         
         total = query.count()
         opportunities = query.offset(skip).limit(limit).all()

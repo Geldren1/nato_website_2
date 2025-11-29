@@ -19,10 +19,17 @@ async def get_opportunities(
     is_active: Optional[bool] = Query(True, description="Filter by active status"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    opportunity_type: Optional[List[str]] = Query(None, description="Filter by opportunity types"),
+    nato_body: Optional[List[str]] = Query(None, description="Filter by NATO bodies"),
+    search: Optional[str] = Query(None, description="Search in opportunity name and code"),
+    closing_in_7_days: Optional[bool] = Query(None, description="Filter opportunities closing in next 7 days"),
+    new_this_week: Optional[bool] = Query(None, description="Filter opportunities created this week"),
+    updated_this_week: Optional[bool] = Query(None, description="Filter opportunities updated this week"),
+    sort_by: Optional[str] = Query("closing_date_asc", description="Sort order"),
     service: OpportunityService = Depends(get_opportunity_service)
 ):
     """
-    Get list of opportunities with pagination.
+    Get list of opportunities with pagination and filtering.
     
     By default, returns only active opportunities.
     
@@ -30,6 +37,13 @@ async def get_opportunities(
         is_active: Filter by active status (default: True)
         page: Page number (default: 1)
         page_size: Items per page (default: 50, max: 100)
+        opportunity_type: Filter by opportunity types (e.g., IFIB, RFP)
+        nato_body: Filter by NATO bodies (e.g., ACT, NCIA)
+        search: Search in opportunity name and code
+        closing_in_7_days: Filter opportunities closing in next 7 days
+        new_this_week: Filter opportunities created this week
+        updated_this_week: Filter opportunities updated this week
+        sort_by: Sort order (closing_date_asc, closing_date_desc, recently_updated, recently_added, name_asc)
         service: Opportunity service (injected)
         
     Returns:
@@ -39,7 +53,14 @@ async def get_opportunities(
         return service.get_opportunities(
             is_active=is_active,
             page=page,
-            page_size=page_size
+            page_size=page_size,
+            opportunity_type=opportunity_type or [],
+            nato_body=nato_body or [],
+            search=search,
+            closing_in_7_days=closing_in_7_days,
+            new_this_week=new_this_week,
+            updated_this_week=updated_this_week,
+            sort_by=sort_by
         )
     except Exception as e:
         logger.error(f"Error fetching opportunities: {str(e)}", event_type="api_error")

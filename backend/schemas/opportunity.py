@@ -55,6 +55,9 @@ class OpportunityResponse(OpportunityBase):
     last_content_update: Optional[datetime] = None
     update_count: int
     last_changed_fields: Optional[List[str]] = None
+    amendment_count: int
+    has_amendments: bool
+    last_amendment_at: Optional[datetime] = None
     removed_at: Optional[datetime] = None
 
     class Config:

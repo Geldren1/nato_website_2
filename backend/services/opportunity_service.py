@@ -2,7 +2,8 @@
 Opportunity service for business logic.
 """
 
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime, timedelta
 from repositories.opportunity_repository import OpportunityRepository
 from schemas.opportunity import OpportunityResponse, OpportunityListResponse
 from models.opportunity import Opportunity
@@ -18,14 +19,26 @@ class OpportunityService:
         self,
         is_active: Optional[bool] = True,
         page: int = 1,
-        page_size: int = 50
+        page_size: int = 50,
+        opportunity_type: List[str] = None,
+        nato_body: List[str] = None,
+        search: Optional[str] = None,
+        closing_in_7_days: Optional[bool] = None,
+        new_this_week: Optional[bool] = None,
+        updated_this_week: Optional[bool] = None,
+        sort_by: str = "closing_date_asc"
     ) -> OpportunityListResponse:
         """
-        Get paginated list of opportunities.
+        Get paginated list of opportunities with filtering and sorting.
         
         When is_active=True, automatically filters out opportunities that are
         more than 1 day past their closing date.
         """
+        if opportunity_type is None:
+            opportunity_type = []
+        if nato_body is None:
+            nato_body = []
+            
         skip = (page - 1) * page_size
         
         # When is_active=True, exclude past-due opportunities (more than 1 day after closing)
@@ -35,7 +48,14 @@ class OpportunityService:
             is_active=is_active,
             skip=skip,
             limit=page_size,
-            exclude_past_due=exclude_past_due
+            exclude_past_due=exclude_past_due,
+            opportunity_type=opportunity_type,
+            nato_body=nato_body,
+            search=search,
+            closing_in_7_days=closing_in_7_days,
+            new_this_week=new_this_week,
+            updated_this_week=updated_this_week,
+            sort_by=sort_by
         )
         
         total_pages = (total + page_size - 1) // page_size if total > 0 else 0
