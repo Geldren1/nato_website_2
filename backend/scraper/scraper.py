@@ -8,7 +8,7 @@ import asyncio
 import re
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import logging
 import pdfplumber
 import tempfile
@@ -469,7 +469,7 @@ class NATOOpportunitiesScraper:
             'removed': removed
         }
     
-    async def scrape_all(self, mode: str = "incremental") -> int:
+    async def scrape_all(self, mode: str = "incremental") -> Dict[str, Any]:
         """
         Scrape all IFIB opportunities and save to database.
         
@@ -477,7 +477,13 @@ class NATOOpportunitiesScraper:
             mode: "full" (process all) or "incremental" (reconcile first)
         
         Returns:
-            Number of opportunities scraped
+            Dictionary with detailed results:
+            - new: List of newly created opportunities
+            - amendments: List of amended opportunities
+            - unchanged_count: Number of unchanged opportunities
+            - removed_count: Number of opportunities removed from website
+            - processed_count: Total number processed
+            - timestamp: When the scrape completed
         """
         logger.info(f"Starting ACT IFIB scraper in {mode} mode...")
         
@@ -504,21 +510,37 @@ class NATOOpportunitiesScraper:
                 
                 logger.info(f"Processing: {len(new_links)} new, {len(amendments)} amendments, {len(unchanged)} unchanged")
                 
-                # Process new opportunities
-                scraped_count = 0
+                # Process new opportunities and collect results
+                new_opportunities = []
                 for i, link in enumerate(new_links, 1):
                     logger.info(f"\n[NEW {i}/{len(new_links)}] Processing: {link.get('url')}")
                     success = await self._process_opportunity(link)
                     if success:
-                        scraped_count += 1
+                        # Get the newly created opportunity using existing session
+                        opportunity_code = self._extract_opportunity_code_from_url(link.get('url'))
+                        if opportunity_code:
+                            # Refresh session to see committed changes
+                            db.commit()
+                            new_opp = db.query(Opportunity).filter(
+                                Opportunity.opportunity_code == opportunity_code
+                            ).first()
+                            if new_opp:
+                                new_opportunities.append(new_opp)
                     await asyncio.sleep(2)
                 
-                # Process amendments
+                # Process amendments and collect results
+                amended_opportunities = []
                 for i, (link, existing_opp) in enumerate(amendments, 1):
                     logger.info(f"\n[AMENDMENT {i}/{len(amendments)}] Processing: {link.get('url')} (existing: {existing_opp.opportunity_code})")
                     success = await self._process_opportunity(link, existing_opportunity=existing_opp)
                     if success:
-                        scraped_count += 1
+                        # Refresh session to see committed changes
+                        db.commit()
+                        updated_opp = db.query(Opportunity).filter(
+                            Opportunity.opportunity_code == existing_opp.opportunity_code
+                        ).first()
+                        if updated_opp:
+                            amended_opportunities.append(updated_opp)
                     await asyncio.sleep(2)
                 
                 # Update last_checked_at for unchanged opportunities
@@ -535,24 +557,60 @@ class NATOOpportunitiesScraper:
                     for opp in removed:
                         logger.debug(f"  - {opp.opportunity_code}: {opp.url}")
                 
+                processed_count = len(new_opportunities) + len(amended_opportunities)
+                
+                logger.info(f"\n✅ Scraping complete! Processed {processed_count} opportunities")
+                
+                return {
+                    'new': new_opportunities,
+                    'amendments': amended_opportunities,
+                    'unchanged_count': len(unchanged),
+                    'removed_count': len(removed),
+                    'processed_count': processed_count,
+                    'timestamp': datetime.utcnow()
+                }
+                
             finally:
                 db.close()
         else:
             # Full mode: process all opportunities (current behavior)
             logger.info("Running in full mode - processing all opportunities")
-            scraped_count = 0
+            processed_count = 0
+            new_opportunities = []
             
             # Process each opportunity
-            for i, link in enumerate(links, 1):
-                url = link['url']
-                logger.info(f"\n[{i}/{len(links)}] Processing: {url}")
-                success = await self._process_opportunity(link)
-                if success:
-                    scraped_count += 1
-                await asyncio.sleep(2)
-        
-        logger.info(f"\n✅ Scraping complete! Processed {scraped_count} opportunities")
-        return scraped_count
+            db = get_db_session()
+            try:
+                for i, link in enumerate(links, 1):
+                    url = link['url']
+                    logger.info(f"\n[{i}/{len(links)}] Processing: {url}")
+                    success = await self._process_opportunity(link)
+                    if success:
+                        processed_count += 1
+                        # Get the opportunity that was created/updated
+                        opportunity_code = self._extract_opportunity_code_from_url(url)
+                        if opportunity_code:
+                            # Refresh session to see committed changes
+                            db.commit()
+                            opp = db.query(Opportunity).filter(
+                                Opportunity.opportunity_code == opportunity_code
+                            ).first()
+                            if opp:
+                                new_opportunities.append(opp)
+                    await asyncio.sleep(2)
+            finally:
+                db.close()
+            
+            logger.info(f"\n✅ Scraping complete! Processed {processed_count} opportunities")
+            
+            return {
+                'new': new_opportunities,
+                'amendments': [],
+                'unchanged_count': 0,
+                'removed_count': 0,
+                'processed_count': processed_count,
+                'timestamp': datetime.utcnow()
+            }
     
     async def _process_opportunity(self, link: Dict, existing_opportunity: Optional[Opportunity] = None) -> bool:
         """

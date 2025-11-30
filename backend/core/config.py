@@ -17,9 +17,12 @@ class Settings(BaseSettings):
     # API Keys
     groq_api_key: Optional[str] = None
     
-    # Brevo Email Service (for future use)
+    # Brevo Email Service
     brevo_api_key: Optional[str] = None
     brevo_list_id: Optional[int] = None
+    brevo_sender_email: Optional[str] = None
+    brevo_sender_name: str = "NATO Opportunities"
+    frontend_url: str = "http://localhost:3000"
     
     # App Configuration
     environment: str = "development"  # development, production, testing
@@ -33,6 +36,13 @@ class Settings(BaseSettings):
     def allowed_origins_list(self) -> List[str]:
         """Parse allowed_origins from comma-separated string to list."""
         return [origin.strip() for origin in self.allowed_origins.split(',') if origin.strip()]
+    
+    @property
+    def email_recipients_list(self) -> List[str]:
+        """Parse email_recipients from comma-separated string to list."""
+        if not self.email_recipients:
+            return []
+        return [email.strip() for email in self.email_recipients.split(',') if email.strip() and '@' in email.strip()]
     
     # Scraper Configuration
     scraper_schedule: str = "daily"

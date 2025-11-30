@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Hero from "@/components/shared/Hero";
 import { OpportunityFilters, OpportunityList } from "@/components/features/opportunities";
+import { SubscriptionForm } from "@/components/features/subscription";
 import { getOpportunities, type Opportunity } from "@/lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -62,6 +63,13 @@ export default function HomePage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
       {/* Landing Sections */}
       <Hero />
+
+      {/* Subscription Form - Full width section between Hero and Opportunities */}
+      <div className="w-full bg-gradient-to-b from-white to-slate-50 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SubscriptionForm variant="inline" />
+        </div>
+      </div>
 
       {/* Opportunities Section */}
       <div id="opportunities-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-12">

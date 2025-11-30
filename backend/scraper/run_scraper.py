@@ -14,9 +14,10 @@ async def main():
     """Main function to run the scraper."""
     try:
         scraper = NATOOpportunitiesScraper(config_name="ACT", use_llm=True)
-        count = await scraper.scrape_all()
-        logger.info(f"Scraping completed. Processed {count} opportunities.")
-        return count
+        results = await scraper.scrape_all(mode="incremental")
+        logger.info(f"Scraping completed. Processed {results.get('processed_count', 0)} opportunities.")
+        logger.info(f"  New: {len(results.get('new', []))}, Amended: {len(results.get('amendments', []))}")
+        return results.get('processed_count', 0)
     except Exception as e:
         logger.error(f"Error running scraper: {e}")
         import traceback
