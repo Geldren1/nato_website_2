@@ -26,6 +26,17 @@ SCRAPER_CONFIGS = {
         "pdf_selector": 'a[target="_blank"][rel="noopener"]',
         "scraper_type": "link_based",
     },
+    "ACT-RFI": {
+        "enabled": True,
+        "nato_body": "ACT",
+        "opportunity_type": "RFI",
+        "base_url": "https://www.act.nato.int/opportunities/contracting/",
+        "opportunity_list_url": "https://www.act.nato.int/opportunities/contracting/",
+        "url_pattern": r"https://www\.act\.nato\.int/opportunities/contracting/[^/?#]+/?$",
+        "url_filter": "rfi",  # String to filter links (case-insensitive)
+        "pdf_selector": 'a[target="_blank"][rel="noopener"]',
+        "scraper_type": "link_based",
+    },
 }
 
 

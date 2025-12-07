@@ -27,6 +27,12 @@ export const OPPORTUNITY_TYPE_FIELDS: Record<string, OpportunityFieldConfig> = {
     specialFields: ['estimated_value'],
     cardHighlightFields: ['target_bid_closing_date', 'estimated_value'],
   },
+  RFI: {
+    primaryDates: ['bid_closing_date', 'clarification_deadline'],
+    secondaryDates: [],
+    showSections: ['submission'],
+    cardHighlightFields: ['bid_closing_date', 'clarification_deadline'],
+  },
 };
 
 /**
