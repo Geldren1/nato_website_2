@@ -29,12 +29,12 @@ logger = get_logger(__name__)
 class NATOOpportunitiesScraper:
     """Main scraper class for NATO ACT IFIB opportunities."""
     
-    def __init__(self, config_name: str = "ACT", use_llm: bool = True):
+    def __init__(self, config_name: str = "ACT-IFIB", use_llm: bool = True):
         """
         Initialize scraper.
         
         Args:
-            config_name: Name of scraper config to use (e.g., "ACT")
+            config_name: Name of scraper config to use (e.g., "ACT-IFIB", "ACT-NOI")
             use_llm: Whether to use LLM for extraction
         """
         if config_name not in SCRAPER_CONFIGS:
@@ -43,6 +43,9 @@ class NATOOpportunitiesScraper:
         self.config = SCRAPER_CONFIGS[config_name]
         self.config_name = config_name
         self.base_url = self.config["base_url"]
+        self.opportunity_type = self.config.get("opportunity_type", "IFIB")
+        self.nato_body = self.config.get("nato_body", "ACT")
+        self.url_filter = self.config.get("url_filter", "").lower()
         self.use_llm = use_llm
         self.llm_client = None
         
@@ -123,8 +126,8 @@ class NATOOpportunitiesScraper:
                             matches = True
                             final_url = resolved_href
                     
-                    # Only include IFIB opportunities
-                    if matches and 'ifib' in final_url.lower():
+                    # Filter by opportunity type (e.g., 'ifib', 'noi')
+                    if matches and self.url_filter and self.url_filter in final_url.lower():
                         text = await link.inner_text()
                         text = text.strip() if text else ""
                         if text:
@@ -132,13 +135,13 @@ class NATOOpportunitiesScraper:
                                 'url': final_url,
                                 'text': text
                             })
-                            logger.info(f"✅ Found IFIB opportunity link: {text[:50]} -> {final_url}")
+                            logger.info(f"✅ Found {self.opportunity_type} opportunity link: {text[:50]} -> {final_url}")
                 
                 logger.info("Closing browser...")
                 await context.close()
                 await browser.close()
                 
-                logger.info(f"Found {len(opportunity_links)} IFIB opportunity links")
+                logger.info(f"Found {len(opportunity_links)} {self.opportunity_type} opportunity links")
                 return opportunity_links
                 
         except Exception as e:
@@ -330,9 +333,8 @@ class NATOOpportunitiesScraper:
         logger.info("Parsing opportunity data from PDF text...")
         
         try:
-            # Determine opportunity type from URL or config
-            # For ACT, we know it's IFIB from the config
-            opportunity_type = "IFIB"  # TODO: Make this dynamic based on URL/config
+            # Get opportunity type from config
+            opportunity_type = self.opportunity_type
             
             # Get the appropriate extractor for this organization and opportunity type
             extractor = get_act_extractor(opportunity_type, use_llm=self.use_llm, llm_client=self.llm_client)
@@ -373,10 +375,9 @@ class NATOOpportunitiesScraper:
         Returns:
             Opportunity code string or None if not found
         """
-        # Use the ACT IFIB extractor's method to extract opportunity code
+        # Use the appropriate extractor's method to extract opportunity code
         # Create a temporary extractor instance to use its method
-        opportunity_type = "IFIB"
-        extractor = get_act_extractor(opportunity_type, use_llm=False, llm_client=None)
+        extractor = get_act_extractor(self.opportunity_type, use_llm=False, llm_client=None)
         return extractor._extract_opportunity_code_from_url(url)
     
     def _reconcile_opportunities(self, website_links: List[Dict], db) -> Dict:
@@ -418,8 +419,8 @@ class NATOOpportunitiesScraper:
         logger.info(f"Found {len(website_codes)} opportunities on website (by opportunity_code)")
         
         # Get all existing opportunities for this nato_body and opportunity_type
-        nato_body = self.config.get("nato_body", "ACT")
-        opportunity_type = "IFIB"
+        nato_body = self.nato_body
+        opportunity_type = self.opportunity_type
         
         existing = db.query(Opportunity).filter(
             Opportunity.nato_body == nato_body,

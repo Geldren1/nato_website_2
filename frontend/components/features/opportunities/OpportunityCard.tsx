@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { Opportunity } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import { Calendar, Info, Link as LinkIcon, FileText, Sparkles, RefreshCw } from "lucide-react";
+import { Info, Link as LinkIcon, FileText, Sparkles, RefreshCw } from "lucide-react";
 import { Card, Badge } from "@/components/ui";
 import OpportunityDetailsModal from "./OpportunityDetailsModal";
+import { getOpportunityFields } from "@/lib/opportunityFields";
+import { OpportunityCardFields } from "./OpportunityFieldRenderers";
 
 interface OpportunityCardProps {
   opportunity: Opportunity;
@@ -13,6 +15,9 @@ interface OpportunityCardProps {
 
 export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Get field configuration for this opportunity type
+  const fieldConfig = getOpportunityFields(opportunity.opportunity_type);
 
   const getTypeVariant = (type: string | null): "primary" | "success" | "warning" | "info" | "default" => {
     if (!type) return "default";
@@ -91,24 +96,7 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
           </h3>
         </div>
 
-        <div className="space-y-2 mb-4">
-          {opportunity.bid_closing_date && (
-            <div className="flex items-center gap-2 text-sm text-slate-700">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span>
-                <strong>Closing:</strong> {opportunity.bid_closing_date}
-              </span>
-            </div>
-          )}
-          {opportunity.clarification_deadline && (
-            <div className="flex items-center gap-2 text-sm text-slate-700">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span>
-                <strong>Clarifications:</strong> {opportunity.clarification_deadline}
-              </span>
-            </div>
-          )}
-        </div>
+        <OpportunityCardFields opportunity={opportunity} fieldConfig={fieldConfig} />
 
         <div className="flex items-center gap-3 pt-4 border-t border-slate-200">
           <button

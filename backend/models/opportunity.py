@@ -29,19 +29,24 @@ class Opportunity(Base):
     response_classification = Column(String, nullable=True)
     contract_duration = Column(String, nullable=True)
     currency = Column(String, nullable=True)
+    estimated_value = Column(String, nullable=True)  # Estimated contract value (e.g., "EUR 500,000")
     eligible_organization_types = Column(Text, nullable=True)  # Which types of organizations are eligible to apply
     
     # Important Dates (original strings from PDF)
     clarification_deadline = Column(String, nullable=True)  # Original string from PDF
     clarification_instructions = Column(Text, nullable=True)  # Instructions for bidder clarification
     bid_closing_date = Column(String, nullable=True)  # Original string from PDF
+    target_bid_closing_date = Column(String, nullable=True)  # Target bid closing date (for NOI)
     expected_contract_award_date = Column(String, nullable=True)  # Original string from PDF
+    target_issue_date = Column(String, nullable=True)  # Target issue date (for NOI)
     bid_validity_days = Column(Integer, nullable=True)
     
     # Important Dates (parsed to DateTime)
     clarification_deadline_parsed = Column(DateTime, nullable=True, index=True)  # Parsed date
     bid_closing_date_parsed = Column(DateTime, nullable=True, index=True)  # Parsed date
+    target_bid_closing_date_parsed = Column(DateTime, nullable=True, index=True)  # Parsed target bid closing date
     expected_contract_award_date_parsed = Column(DateTime, nullable=True)  # Parsed date
+    target_issue_date_parsed = Column(DateTime, nullable=True, index=True)  # Parsed target issue date
     
     # Submission Details
     required_documents = Column(Text, nullable=True)  # Text for longer content

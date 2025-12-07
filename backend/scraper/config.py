@@ -1,14 +1,28 @@
 """
-Scraper configuration for ACT scrapers.
+Scraper configuration for NATO scrapers.
+Each config is keyed by "NATO_BODY-OPPORTUNITY_TYPE" (e.g., "ACT-IFIB", "ACT-NOI").
 """
 
 SCRAPER_CONFIGS = {
-    "ACT": {
+    "ACT-IFIB": {
         "enabled": True,
         "nato_body": "ACT",
+        "opportunity_type": "IFIB",
         "base_url": "https://www.act.nato.int/opportunities/contracting/",
         "opportunity_list_url": "https://www.act.nato.int/opportunities/contracting/",
         "url_pattern": r"https://www\.act\.nato\.int/opportunities/contracting/[^/?#]+/?$",
+        "url_filter": "ifib",  # String to filter links (case-insensitive)
+        "pdf_selector": 'a[target="_blank"][rel="noopener"]',
+        "scraper_type": "link_based",
+    },
+    "ACT-NOI": {
+        "enabled": True,
+        "nato_body": "ACT",
+        "opportunity_type": "NOI",
+        "base_url": "https://www.act.nato.int/opportunities/contracting/",
+        "opportunity_list_url": "https://www.act.nato.int/opportunities/contracting/",
+        "url_pattern": r"https://www\.act\.nato\.int/opportunities/contracting/[^/?#]+/?$",
+        "url_filter": "noi",  # String to filter links (case-insensitive)
         "pdf_selector": 'a[target="_blank"][rel="noopener"]',
         "scraper_type": "link_based",
     },

@@ -105,5 +105,17 @@ def parse_opportunity_dates(opportunity_data: Dict) -> Dict:
         if parsed:
             opportunity_data['expected_contract_award_date_parsed'] = parsed
     
+    # Parse target issue date (for NOI)
+    if opportunity_data.get('target_issue_date'):
+        parsed = parse_date_string(opportunity_data['target_issue_date'])
+        if parsed:
+            opportunity_data['target_issue_date_parsed'] = parsed
+    
+    # Parse target bid closing date (for NOI)
+    if opportunity_data.get('target_bid_closing_date'):
+        parsed = parse_date_string(opportunity_data['target_bid_closing_date'])
+        if parsed:
+            opportunity_data['target_bid_closing_date_parsed'] = parsed
+    
     return opportunity_data
 

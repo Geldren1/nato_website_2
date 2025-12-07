@@ -5,6 +5,7 @@ import { Opportunity } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { X, ExternalLink, FileText, Calendar, Mail, User, DollarSign, Award, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getOpportunityFields } from "@/lib/opportunityFields";
 
 interface OpportunityDetailsModalProps {
   opportunity: Opportunity;
@@ -38,6 +39,9 @@ export default function OpportunityDetailsModal({
 
   if (!isOpen) return null;
 
+  // Get field configuration for this opportunity type
+  const fieldConfig = getOpportunityFields(opportunity.opportunity_type);
+
   const getTypeColor = (type: string | null) => {
     if (!type) return "bg-slate-100 text-slate-700";
     const colors: Record<string, string> = {
@@ -47,6 +51,23 @@ export default function OpportunityDetailsModal({
       NOI: "bg-orange-100 text-orange-700",
     };
     return colors[type] || "bg-slate-100 text-slate-700";
+  };
+  
+  // Check if section should be shown
+  const shouldShowSection = (sectionName: string): boolean => {
+    return fieldConfig.showSections.includes(sectionName);
+  };
+  
+  // Check if any date fields are available
+  const hasImportantDates = (): boolean => {
+    const allDateFields = [
+      ...fieldConfig.primaryDates,
+      ...fieldConfig.secondaryDates,
+    ];
+    return allDateFields.some((field) => {
+      const value = opportunity[field] as string | null;
+      return value !== null && value !== undefined && value !== "";
+    });
   };
 
   return (
@@ -117,48 +138,79 @@ export default function OpportunityDetailsModal({
               )}
 
               {/* Important Dates */}
-              {(opportunity.clarification_deadline ||
-                opportunity.bid_closing_date ||
-                opportunity.expected_contract_award_date) && (
+              {hasImportantDates() && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     Important Dates
                   </h3>
                   <div className="space-y-2">
-                    {opportunity.clarification_deadline && (
-                      <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
-                        <Clock className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                            Clarification Deadline
+                    {/* Render primary dates */}
+                    {fieldConfig.primaryDates.map((fieldName) => {
+                      const value = opportunity[fieldName] as string | null;
+                      if (!value) return null;
+                      
+                      let label = "";
+                      let icon = <Calendar className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />;
+                      
+                      switch (fieldName) {
+                        case "clarification_deadline":
+                          label = "Clarification Deadline";
+                          icon = <Clock className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />;
+                          break;
+                        case "bid_closing_date":
+                          label = "Bid Closing Date";
+                          break;
+                        case "target_bid_closing_date":
+                          label = "Target Bid Closing Date";
+                          break;
+                        case "target_issue_date":
+                          label = "Target Issue Date";
+                          break;
+                        default:
+                          label = fieldName.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+                      }
+                      
+                      return (
+                        <div key={fieldName} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
+                          {icon}
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                              {label}
+                            </div>
+                            <div className="text-slate-900">{value}</div>
                           </div>
-                          <div className="text-slate-900">{opportunity.clarification_deadline}</div>
                         </div>
-                      </div>
-                    )}
-                    {opportunity.bid_closing_date && (
-                      <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
-                        <Calendar className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                            Bid Closing Date
+                      );
+                    })}
+                    
+                    {/* Render secondary dates */}
+                    {fieldConfig.secondaryDates.map((fieldName) => {
+                      const value = opportunity[fieldName] as string | null;
+                      if (!value) return null;
+                      
+                      let label = "";
+                      switch (fieldName) {
+                        case "expected_contract_award_date":
+                          label = "Expected Contract Award Date";
+                          break;
+                        default:
+                          label = fieldName.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+                      }
+                      
+                      return (
+                        <div key={fieldName} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
+                          <Award className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                              {label}
+                            </div>
+                            <div className="text-slate-900">{value}</div>
                           </div>
-                          <div className="text-slate-900">{opportunity.bid_closing_date}</div>
                         </div>
-                      </div>
-                    )}
-                    {opportunity.expected_contract_award_date && (
-                      <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
-                        <Award className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                            Expected Contract Award Date
-                          </div>
-                          <div className="text-slate-900">{opportunity.expected_contract_award_date}</div>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })}
+                    
                     {opportunity.contract_duration && (
                       <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg">
                         <Clock className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
@@ -175,7 +227,7 @@ export default function OpportunityDetailsModal({
               )}
 
               {/* Contract Details */}
-              {(opportunity.contract_type || opportunity.currency || opportunity.eligible_organization_types || opportunity.partial_bidding_allowed !== null) && (
+              {(opportunity.contract_type || opportunity.currency || opportunity.estimated_value || opportunity.eligible_organization_types || opportunity.partial_bidding_allowed !== null) && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide flex items-center gap-2">
                     <Award className="w-4 h-4" />
@@ -188,6 +240,15 @@ export default function OpportunityDetailsModal({
                           Contract Type
                         </div>
                         <div className="text-slate-900">{opportunity.contract_type}</div>
+                      </div>
+                    )}
+                    {opportunity.estimated_value && (
+                      <div className="p-3 bg-slate-50 rounded-lg">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-2">
+                          <DollarSign className="w-4 h-4" />
+                          Estimated Value
+                        </div>
+                        <div className="text-slate-900 font-semibold">{opportunity.estimated_value}</div>
                       </div>
                     )}
                     {opportunity.currency && (
@@ -219,7 +280,7 @@ export default function OpportunityDetailsModal({
               )}
 
               {/* Submission Requirements */}
-              {(opportunity.proposal_content || opportunity.submission_instructions || opportunity.clarification_instructions) && (
+              {shouldShowSection('submission') && (opportunity.proposal_content || opportunity.submission_instructions || opportunity.clarification_instructions) && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
                     Submission Requirements
@@ -254,7 +315,7 @@ export default function OpportunityDetailsModal({
               )}
 
               {/* Evaluation Criteria */}
-              {(opportunity.evaluation_criteria || opportunity.evaluation_criteria_full) && (
+              {shouldShowSection('evaluation') && (opportunity.evaluation_criteria || opportunity.evaluation_criteria_full) && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
                     Evaluation Criteria
@@ -281,7 +342,7 @@ export default function OpportunityDetailsModal({
               )}
 
               {/* Compliance Criteria */}
-              {opportunity.bid_compliance_criteria && (
+              {shouldShowSection('compliance') && opportunity.bid_compliance_criteria && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
                     Bid Compliance Criteria
