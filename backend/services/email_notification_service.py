@@ -44,8 +44,8 @@ class EmailNotificationService:
                 "errors": ["Email service not configured"]
             }
         
-        # Get subscriber emails from Brevo
-        subscriber_emails = self.brevo_client.get_contacts_from_list(limit=1000)
+        # Get subscriber emails from Brevo (max limit is 500)
+        subscriber_emails = self.brevo_client.get_contacts_from_list(limit=500)
         
         if not subscriber_emails:
             logger.info("No subscribers found, skipping email notifications")

@@ -206,8 +206,15 @@ class BrevoClient:
             emails = []
             if hasattr(contacts, 'contacts') and contacts.contacts:
                 for contact in contacts.contacts:
-                    if hasattr(contact, 'email') and contact.email:
-                        emails.append(contact.email)
+                    # Brevo API returns contacts as dictionaries
+                    if isinstance(contact, dict):
+                        email = contact.get('email')
+                        if email:
+                            emails.append(email)
+                    elif hasattr(contact, 'email'):
+                        # Fallback for object-style contacts
+                        if contact.email:
+                            emails.append(contact.email)
             
             logger.info(f"Fetched {len(emails)} contacts from Brevo list {self.list_id}")
             return emails
