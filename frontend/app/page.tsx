@@ -65,7 +65,7 @@ export default function HomePage() {
       <Hero />
 
       {/* Subscription Form - Full width section between Hero and Opportunities */}
-      <div className="w-full bg-gradient-to-b from-white to-slate-50 py-8">
+      <div id="subscribe-section" className="w-full bg-gradient-to-b from-white to-slate-50 py-8">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <SubscriptionForm variant="inline" />
         </div>
