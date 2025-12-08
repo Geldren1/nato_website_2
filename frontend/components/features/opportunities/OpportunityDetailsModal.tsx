@@ -47,6 +47,7 @@ export default function OpportunityDetailsModal({
     const colors: Record<string, string> = {
       RFP: "bg-blue-100 text-blue-700",
       RFI: "bg-green-100 text-green-700",
+      RFIP: "bg-green-100 text-green-700",  // Same as RFI
       IFIB: "bg-purple-100 text-purple-700",
       NOI: "bg-orange-100 text-orange-700",
     };

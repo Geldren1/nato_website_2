@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Daily scraper job script for NATO Opportunities
-# This script runs all ACT scrapers (IFIB, NOI, RFI) in incremental mode and logs the results
+# This script runs all ACT scrapers (IFIB, NOI, RFI, RFIP) in incremental mode and logs the results
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -21,8 +21,8 @@ mkdir -p "$LOG_DIR"
 # Activate virtual environment
 cd "$BACKEND_DIR" || exit 1
 
-# Run all three scrapers
-SCRAPERS=("ACT-IFIB" "ACT-NOI" "ACT-RFI")
+# Run all four scrapers
+SCRAPERS=("ACT-IFIB" "ACT-NOI" "ACT-RFI" "ACT-RFIP")
 TOTAL_EXIT_CODE=0
 
 # Run the job with timestamp
@@ -45,6 +45,9 @@ for SCRAPER in "${SCRAPERS[@]}"; do
             ;;
         "ACT-RFI")
             "$PYTHON" -m jobs.daily_scraper_job_act_rfi incremental >> "$LOG_FILE" 2>> "$ERROR_LOG"
+            ;;
+        "ACT-RFIP")
+            "$PYTHON" -m jobs.daily_scraper_job_act_rfip incremental >> "$LOG_FILE" 2>> "$ERROR_LOG"
             ;;
     esac
     

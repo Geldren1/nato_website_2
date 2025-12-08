@@ -32,6 +32,9 @@ def get_act_extractor(opportunity_type: Optional[str], use_llm: bool = True, llm
     elif opportunity_type_upper == "RFI":
         from scraper.extractors.act_rfi_extractor import ACTRFIExtractor
         return ACTRFIExtractor(use_llm=use_llm, llm_client=llm_client)
+    elif opportunity_type_upper == "RFIP":
+        from scraper.extractors.act_rfip_extractor import ACTRFIPExtractor
+        return ACTRFIPExtractor(use_llm=use_llm, llm_client=llm_client)
     
     # For other types, we can add extractors later
     raise NotImplementedError(f"ACT extractor for opportunity type '{opportunity_type}' not yet implemented")

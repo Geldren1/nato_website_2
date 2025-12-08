@@ -43,7 +43,7 @@ export default function OpportunityFilters({
   const hasActiveFilters = filters.opportunity_type.length > 0 || filters.nato_body.length > 0 || filters.search;
 
   // Common opportunity types for filtering
-  const commonTypes = ["RFP", "RFI", "IFIB", "NOI"];
+  const commonTypes = ["RFP", "RFI", "IFIB", "NOI", "RFIP"];
 
   const handleTypeClick = (type: string) => {
     const currentTypes = filters.opportunity_type || [];

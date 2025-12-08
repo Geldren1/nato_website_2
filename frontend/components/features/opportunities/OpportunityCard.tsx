@@ -23,6 +23,7 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
     if (!type) return "default";
     if (type === "RFP") return "primary";
     if (type === "RFI") return "success";
+    if (type === "RFIP") return "success";  // Same as RFI
     if (type === "IFIB") return "info";
     if (type === "NOI") return "warning";
     return "default";
@@ -40,12 +41,17 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
     );
   };
 
-  // Check if opportunity was updated in the last 5 days
-  const isRecentlyUpdated = (): boolean => {
-    if (!opportunity.updated_at) return false;
-    const updatedDate = new Date(opportunity.updated_at);
+  // Check if opportunity has a recent amendment (PDF URL contains _amdt and was amended in last 5 days)
+  const hasRecentAmendment = (): boolean => {
+    // Must have a PDF URL with amendment pattern
+    if (!opportunity.pdf_url) return false;
+    if (!opportunity.pdf_url.toLowerCase().includes('_amdt')) return false;
+    
+    // Must have been amended recently (within last 5 days)
+    if (!opportunity.last_amendment_at) return false;
+    const amendmentDate = new Date(opportunity.last_amendment_at);
     const today = new Date();
-    const daysDiff = Math.floor((today.getTime() - updatedDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysDiff = Math.floor((today.getTime() - amendmentDate.getTime()) / (1000 * 60 * 60 * 24));
     return daysDiff <= 5 && daysDiff >= 0;
   };
 
@@ -76,7 +82,7 @@ export default function OpportunityCard({ opportunity }: OpportunityCardProps) {
                 NEW
               </Badge>
             )}
-            {isRecentlyUpdated() && !isNew() && (
+            {hasRecentAmendment() && !isNew() && (
               <Badge 
                 variant="warning" 
                 className="flex items-center gap-1 bg-orange-500 text-white font-semibold"

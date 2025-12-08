@@ -33,6 +33,12 @@ export const OPPORTUNITY_TYPE_FIELDS: Record<string, OpportunityFieldConfig> = {
     showSections: ['submission'],
     cardHighlightFields: ['bid_closing_date', 'clarification_deadline'],
   },
+  RFIP: {
+    primaryDates: ['bid_closing_date'],
+    secondaryDates: [],
+    showSections: ['submission'],
+    cardHighlightFields: ['bid_closing_date'],
+  },
 };
 
 /**
