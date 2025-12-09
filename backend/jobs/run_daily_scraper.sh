@@ -69,8 +69,20 @@ for SCRAPER in "${SCRAPERS[@]}"; do
     fi
 done
 
+# Check for succeeded NOIs after all scrapers complete
+echo "" >> "$LOG_FILE"
+echo "--- Checking for succeeded NOIs ---" >> "$LOG_FILE"
+echo "Started at: $(date)" >> "$LOG_FILE"
+"$PYTHON" -m jobs.check_succeeded_nois >> "$LOG_FILE" 2>> "$ERROR_LOG"
+EXIT_CODE=$?
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "✅ Succeeded NOI check completed successfully at: $(date)" >> "$LOG_FILE"
+else
+    echo "❌ Succeeded NOI check failed with exit code $EXIT_CODE at: $(date)" >> "$LOG_FILE"
+fi
+
 # Log completion
 echo "" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"
-echo "All scrapers completed at: $(date)" >> "$LOG_FILE"
+echo "All scrapers and checks completed at: $(date)" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"
