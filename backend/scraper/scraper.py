@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 from database.session import get_db_session
 from models import Opportunity
 from utils.date_parser import parse_opportunity_dates
-from utils.url_comparison import urls_differ_by_ending
+from utils.url_comparison import urls_differ_by_ending, pdf_urls_differ
 from scraper.config import SCRAPER_CONFIGS, extract_nato_body_from_url
 from scraper.extractors import get_act_extractor
 from external.groq.client import get_groq_client
@@ -380,7 +380,7 @@ class NATOOpportunitiesScraper:
         extractor = get_act_extractor(self.opportunity_type, use_llm=False, llm_client=None)
         return extractor._extract_opportunity_code_from_url(url)
     
-    def _reconcile_opportunities(self, website_links: List[Dict], db) -> Dict:
+    async def _reconcile_opportunities(self, website_links: List[Dict], db) -> Dict:
         """
         Reconcile website opportunities with database opportunities.
         
@@ -441,18 +441,40 @@ class NATOOpportunitiesScraper:
                 new.append(link)
                 logger.debug(f"New opportunity: {code} -> {link.get('url')}")
             else:
-                # Existing opportunity - check if URL has changed
+                # Existing opportunity - check if page URL or PDF URL has changed
                 existing_opp = existing_by_code[code]
                 website_url = link.get('url')
                 
-                if urls_differ_by_ending(website_url, existing_opp.url):
-                    # URL ending differs - this is an amendment
-                    amendments.append((link, existing_opp))
-                    logger.info(f"Amendment detected: {code} - URL changed from '{existing_opp.url}' to '{website_url}'")
+                # First check if page URL ending differs
+                page_url_changed = urls_differ_by_ending(website_url, existing_opp.url)
+                
+                # Visit the page to get the PDF URL and compare
+                logger.debug(f"Checking PDF URL for existing opportunity: {code}")
+                page_info = await self.visit_opportunity_page(website_url)
+                
+                if page_info and page_info.get('pdf_url'):
+                    website_pdf_url = page_info.get('pdf_url')
+                    pdf_url_changed = pdf_urls_differ(website_pdf_url, existing_opp.pdf_url)
+                    
+                    if page_url_changed or pdf_url_changed:
+                        # Either page URL or PDF URL changed - this is an amendment
+                        amendments.append((link, existing_opp))
+                        if page_url_changed:
+                            logger.info(f"Amendment detected: {code} - Page URL changed from '{existing_opp.url}' to '{website_url}'")
+                        if pdf_url_changed:
+                            logger.info(f"Amendment detected: {code} - PDF URL changed from '{existing_opp.pdf_url}' to '{website_pdf_url}'")
+                    else:
+                        # Both page URL and PDF URL are the same - unchanged
+                        unchanged.append(existing_opp)
+                        logger.debug(f"Unchanged: {code} -> {website_url} (PDF: {website_pdf_url})")
                 else:
-                    # URL ending same - unchanged
-                    unchanged.append(existing_opp)
-                    logger.debug(f"Unchanged: {code} -> {website_url}")
+                    # Could not get PDF URL - fall back to page URL comparison only
+                    if page_url_changed:
+                        amendments.append((link, existing_opp))
+                        logger.info(f"Amendment detected: {code} - Page URL changed from '{existing_opp.url}' to '{website_url}' (could not check PDF URL)")
+                    else:
+                        unchanged.append(existing_opp)
+                        logger.warning(f"Could not get PDF URL for {code}, marking as unchanged based on page URL only")
         
         # Find removed (in DB but not on website)
         removed = []
@@ -501,7 +523,7 @@ class NATOOpportunitiesScraper:
             # Phase 2: Reconciliation - Compare with database
             db = get_db_session()
             try:
-                reconciliation = self._reconcile_opportunities(links, db)
+                reconciliation = await self._reconcile_opportunities(links, db)
                 
                 # Phase 3: Processing - Process only what needs it
                 new_links = reconciliation['new']
@@ -686,8 +708,10 @@ class NATOOpportunitiesScraper:
                     
                     if existing:
                         # Update existing opportunity (amendment or update)
-                        # Check if this is an amendment (URL changed)
-                        is_amendment = urls_differ_by_ending(url, existing.url)
+                        # Check if this is an amendment (page URL or PDF URL changed)
+                        page_url_changed = urls_differ_by_ending(url, existing.url)
+                        pdf_url_changed = pdf_urls_differ(opportunity_data.get('pdf_url'), existing.pdf_url)
+                        is_amendment = page_url_changed or pdf_url_changed
                         
                         # Track which fields are changing
                         changed_fields = []
@@ -754,8 +778,10 @@ class NATOOpportunitiesScraper:
                         
                         if existing:
                             # Update existing opportunity
-                            # Check if this is an amendment (URL changed)
-                            is_amendment = urls_differ_by_ending(url, existing.url)
+                            # Check if this is an amendment (page URL or PDF URL changed)
+                            page_url_changed = urls_differ_by_ending(url, existing.url)
+                            pdf_url_changed = pdf_urls_differ(opportunity_data.get('pdf_url'), existing.pdf_url)
+                            is_amendment = page_url_changed or pdf_url_changed
                             
                             # Track which fields are changing
                             changed_fields = []

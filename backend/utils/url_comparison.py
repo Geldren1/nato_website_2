@@ -52,6 +52,86 @@ def extract_url_ending(url: str) -> Optional[str]:
         return None
 
 
+def extract_pdf_filename(pdf_url: str) -> Optional[str]:
+    """
+    Extract the filename from a PDF URL.
+    
+    Examples:
+    - https://www.act.nato.int/wp-content/uploads/2025/11/ifib026007.pdf
+      → ifib026007.pdf
+    - https://www.act.nato.int/wp-content/uploads/2025/11/ifib026007_amdt1.pdf
+      → ifib026007_amdt1.pdf
+    
+    Args:
+        pdf_url: The PDF URL
+        
+    Returns:
+        The filename (last segment of path), or None if URL is invalid
+    """
+    if not pdf_url:
+        return None
+    
+    try:
+        parsed = urlparse(pdf_url)
+        path = parsed.path
+        
+        # Get the last segment (filename)
+        segments = path.split('/')
+        filename = segments[-1] if segments else None
+        
+        logger.debug(f"Extracted PDF filename '{filename}' from '{pdf_url}'")
+        return filename
+        
+    except Exception as e:
+        logger.warning(f"Error extracting PDF filename from '{pdf_url}': {e}")
+        return None
+
+
+def pdf_urls_differ(pdf_url1: Optional[str], pdf_url2: Optional[str]) -> bool:
+    """
+    Compare PDF URLs by their filenames to detect if PDF has changed (amendment).
+    
+    This function extracts the filename from each PDF URL and compares them.
+    If the filenames differ, it indicates the PDF has changed (e.g., an amendment).
+    
+    Examples:
+    - ifib026007.pdf vs ifib026007_amdt1.pdf → True (different, amendment)
+    - ifib026007.pdf vs ifib026007.pdf → False (same)
+    - ifib026007.pdf vs None → True (one missing)
+    
+    Args:
+        pdf_url1: First PDF URL to compare
+        pdf_url2: Second PDF URL to compare
+        
+    Returns:
+        True if PDF filenames differ, False if they are the same
+    """
+    if not pdf_url1 or not pdf_url2:
+        # If either is missing, consider them different
+        if pdf_url1 != pdf_url2:
+            logger.debug(f"One PDF URL is missing: pdf_url1='{pdf_url1}', pdf_url2='{pdf_url2}'")
+            return True
+        return False
+    
+    filename1 = extract_pdf_filename(pdf_url1)
+    filename2 = extract_pdf_filename(pdf_url2)
+    
+    # If either filename extraction failed, fall back to full URL comparison
+    if filename1 is None or filename2 is None:
+        logger.debug(f"Could not extract filenames, comparing full PDF URLs: '{pdf_url1}' vs '{pdf_url2}'")
+        return pdf_url1 != pdf_url2
+    
+    # Compare the filenames (case-insensitive)
+    differ = filename1.lower() != filename2.lower()
+    
+    if differ:
+        logger.info(f"PDF filenames differ: '{filename1}' vs '{filename2}' (potential amendment)")
+    else:
+        logger.debug(f"PDF filenames match: '{filename1}' == '{filename2}'")
+    
+    return differ
+
+
 def urls_differ_by_ending(url1: str, url2: str) -> bool:
     """
     Compare URL endings to detect if URLs differ (indicating potential amendment).
